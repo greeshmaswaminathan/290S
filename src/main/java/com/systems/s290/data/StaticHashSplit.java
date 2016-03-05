@@ -8,7 +8,7 @@ import com.cloudera.util.consistenthash.MD5HashFunction;
 
 public class StaticHashSplit implements DataSplit {
 
-	static final Logger LOG = LoggerFactory.getLogger(DataSplit.class);
+	static final Logger LOG = LoggerFactory.getLogger(StaticHashSplit.class);
 	private HashFunction hashFunction;
 	private SystemDetails systemDetails;
 	

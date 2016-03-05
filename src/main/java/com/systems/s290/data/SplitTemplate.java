@@ -56,7 +56,7 @@ public class SplitTemplate {
 			}
 
 		}
-		LOG.info("Split completed in " + (System.nanoTime() - time));
+		LOG.info("Split completed in " + (System.nanoTime() - time)+" with strategy " + strategy.getClass());
 	}
 
 	private void splitInChunks(DataSplit strategy, List<ArrayList<TwitterStatus>> hashedList, Connection sourceConn,

@@ -1,0 +1,2 @@
+231  [main] INFO  com.systems.s290.data.SplitTemplate - Clearing data from all targets 
+6021 [main] INFO  com.systems.s290.data.SplitTemplate - Begin split with strategy class com.systems.s290.data.ConsistentHashSplit 

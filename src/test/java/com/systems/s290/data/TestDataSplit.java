@@ -6,11 +6,11 @@ import java.util.List;
 
 import org.junit.Test;
 
-public class TestConsistentHashSplit  {
+public class TestDataSplit  {
 
 	
 	@Test
-	public void testConsistentHash() throws SQLException{
+	public void testDataSplit() throws SQLException{
 		SystemDetails details = new SystemDetails();
 		List<String> connectionStrings = new ArrayList<String>();
 		connectionStrings.add("instance290-1.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306");
@@ -22,6 +22,8 @@ public class TestConsistentHashSplit  {
 		details.setSourceConnectionString("instance290-0.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306");
 		DataSplit split = new ConsistentHashSplit(details);
 		new SplitTemplate().recreate(split, details);
+		DataSplit split1 = new StaticHashSplit(details);
+		new SplitTemplate().recreate(split1, details);
 	}
 	
 
