@@ -40,20 +40,21 @@ public class RequestGenerator {
 	
 	public void fireRandomRequest() throws IOException{
 		readUserIds();
+		RequestHandler handler = new RequestHandler();
 		long startTime = System.currentTimeMillis();
-		long endTime = System.nanoTime() + TimeUnit.NANOSECONDS.convert(3L, TimeUnit.HOURS);
-		long addTime = System.nanoTime() + TimeUnit.NANOSECONDS.convert(1L, TimeUnit.HOURS);
-		long removeTime = System.nanoTime() + TimeUnit.NANOSECONDS.convert(2L, TimeUnit.HOURS);
+		long endTime = System.nanoTime() + TimeUnit.NANOSECONDS.convert(2L, TimeUnit.HOURS);
+		long addTime = System.nanoTime() + TimeUnit.NANOSECONDS.convert(30L, TimeUnit.MINUTES);
+		long removeTime = System.nanoTime() + TimeUnit.NANOSECONDS.convert(1L, TimeUnit.HOURS);
 		while(System.nanoTime() < endTime){
 			//Run for some time
-			newFixedThreadPool.submit(new RequestUser(getRandomUserId()));
+			newFixedThreadPool.submit(new RequestUser(getRandomUserId(),handler));
 			//Initiate an addition
 			if((System.currentTimeMillis() - startTime) == addTime){
-				//add a server
+				handler.addServer();
 			}
 			//Initiate a removal
 			if((System.currentTimeMillis() - startTime) == removeTime){
-				//remove server
+				handler.removeServer();
 			}
 		}
 		
@@ -65,20 +66,22 @@ public class RequestGenerator {
 class RequestUser implements Runnable{
  
 	private long userId;
+	private RequestHandler handler;
 	Logger statichashLogger = LoggerFactory.getLogger("static"); 
 	Logger consistenthashLogger = LoggerFactory.getLogger("consistent"); 
 	
-	public RequestUser(long userId){
+	public RequestUser(long userId, RequestHandler handler){
 		this.userId = userId;
+		this.handler = handler;
 	}
 	
 	@Override
 	public void run() {
 		long startTime = System.nanoTime();
-		Proxy.getTweetsFromUser(userId,Proxy.CONSISTENT );
+		handler.getTweetsFromUser(userId+"",RequestHandler.CONSISTENT );
 		consistenthashLogger.info("Time taken for getting details from userId "+userId+" :"+(System.nanoTime() - startTime));
 		startTime = System.nanoTime();
-		Proxy.getTweetsFromUser(userId,Proxy.STATIC );
+		handler.getTweetsFromUser(userId+"",RequestHandler.STATIC );
 		statichashLogger.info("Time taken for getting details from userId "+userId+" :"+(System.nanoTime() - startTime));
 	}
 	
