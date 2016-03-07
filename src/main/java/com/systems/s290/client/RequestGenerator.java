@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -38,7 +39,7 @@ public class RequestGenerator {
 	}
 
 	
-	public void fireRandomRequest() throws IOException{
+	public void fireRandomRequest() throws IOException, SQLException{
 		readUserIds();
 		RequestHandler handler = new RequestHandler();
 		long startTime = System.currentTimeMillis();
