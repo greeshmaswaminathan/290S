@@ -1,0 +1,5 @@
+instance290-1.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306
+instance290-2.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306
+instance290-3.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306
+instance290-4.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306
+instance290-5.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306
