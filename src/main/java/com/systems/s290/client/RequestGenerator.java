@@ -8,8 +8,10 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -19,8 +21,23 @@ public class RequestGenerator {
 	
 	private List<Long> userIds = new ArrayList<>();
 	private Random randomizer = new Random();
-	ExecutorService newFixedThreadPool = Executors.newFixedThreadPool(100);
+	ExecutorService newCachedThreadPool = Executors.newCachedThreadPool();
+	static final Logger LOG = LoggerFactory.getLogger(RequestGenerator.class);
+	static final Logger statichashLogger = LoggerFactory.getLogger("static"); 
+	static final Logger consistenthashLogger = LoggerFactory.getLogger("consistent"); 
+	static final long initialTime = System.currentTimeMillis();
 	
+	public RequestGenerator(){
+		Runtime.getRuntime().addShutdownHook(new Thread(new Runnable(){
+
+			@Override
+			public void run() {
+				newCachedThreadPool.shutdown();
+				
+			}
+			
+		}));
+	}
 	
 	private void readUserIds() throws IOException{
 		
@@ -39,28 +56,80 @@ public class RequestGenerator {
 	}
 
 	
-	public void fireRandomRequest() throws IOException, SQLException{
+	public void fireRandomRequest() throws IOException, SQLException, InterruptedException, ExecutionException{
+		LOG.info("Starting request firing");
 		readUserIds();
-		RequestHandler handler = new RequestHandler();
-		long startTime = System.currentTimeMillis();
-		long endTime = System.nanoTime() + TimeUnit.NANOSECONDS.convert(2L, TimeUnit.HOURS);
-		long addTime = System.nanoTime() + TimeUnit.NANOSECONDS.convert(30L, TimeUnit.MINUTES);
-		long removeTime = System.nanoTime() + TimeUnit.NANOSECONDS.convert(1L, TimeUnit.HOURS);
+		final RequestHandler handler = new RequestHandler();
+		long startTime = System.nanoTime();
+		long endTime = startTime + TimeUnit.NANOSECONDS.convert(15L, TimeUnit.MINUTES);
+		long addTime = startTime + TimeUnit.NANOSECONDS.convert(1L, TimeUnit.MINUTES);
+		long removeTime = startTime + TimeUnit.NANOSECONDS.convert(11L, TimeUnit.MINUTES);
+		boolean serverAdded = false;
+		boolean serverRemoved = false;
+		Future<?> future = null;
 		while(System.nanoTime() < endTime){
 			//Run for some time
-			newFixedThreadPool.submit(new RequestUser(getRandomUserId(),handler));
+			Long randomUserId = getRandomUserId();
+			//LOG.info("Requesting for user:"+randomUserId);
+			newCachedThreadPool.submit(new RequestUser(randomUserId,handler));
+			
 			//Initiate an addition
-			if((System.currentTimeMillis() - startTime) == addTime){
-				handler.addServer();
+			if(System.nanoTime() > addTime && !serverAdded){
+				ExecutorService newSingleThreadExecutor = Executors.newSingleThreadExecutor();
+				future = newSingleThreadExecutor.submit(new Runnable(){
+
+					@Override
+					public void run() {
+						LOG.info("Adding server");
+						consistenthashLogger.info("Adding server");
+						statichashLogger.info("Adding server");
+						try {
+							handler.addServer();
+						} catch (SQLException e) {
+							LOG.info("Exception in adding server",e);
+						}
+						
+						LOG.info("Adding server completed");
+						consistenthashLogger.info("Adding server completed");
+						statichashLogger.info("Adding server completed");
+						
+					}});
+				
+				serverAdded = true;
+				
 			}
 			//Initiate a removal
-			if((System.currentTimeMillis() - startTime) == removeTime){
-				handler.removeServer();
+			else if((System.nanoTime()) > removeTime && !serverRemoved && future.get() == null){
+				new Thread(new Runnable(){
+
+					@Override
+					public void run() {
+						LOG.info("Removing server");
+						consistenthashLogger.info("Removing server");
+						statichashLogger.info("Removing server");
+						try {
+							handler.removeServer();
+						} catch (SQLException e) {
+							LOG.info("Exception in removing server",e);
+						}
+						LOG.info("Removing server completed");
+						consistenthashLogger.info("Removing server completed");
+						statichashLogger.info("Removing server completed");
+					}}).start();
+				serverRemoved = true;
+				
+			}
+			else{
+				Thread.sleep(250);
 			}
 		}
 		
 		
 		
+	}
+	
+	public static void main(String[] args) throws IOException, SQLException, InterruptedException, ExecutionException {
+		new RequestGenerator().fireRandomRequest();
 	}
 }
 
@@ -68,8 +137,7 @@ class RequestUser implements Runnable{
  
 	private long userId;
 	private RequestHandler handler;
-	Logger statichashLogger = LoggerFactory.getLogger("static"); 
-	Logger consistenthashLogger = LoggerFactory.getLogger("consistent"); 
+	
 	
 	public RequestUser(long userId, RequestHandler handler){
 		this.userId = userId;
@@ -80,10 +148,11 @@ class RequestUser implements Runnable{
 	public void run() {
 		long startTime = System.nanoTime();
 		handler.getTweetsFromUser(userId+"",RequestHandler.CONSISTENT );
-		consistenthashLogger.info("Time taken for getting details from userId "+userId+" :"+(System.nanoTime() - startTime));
-		startTime = System.nanoTime();
-		handler.getTweetsFromUser(userId+"",RequestHandler.STATIC );
-		statichashLogger.info("Time taken for getting details from userId "+userId+" :"+(System.nanoTime() - startTime));
+		RequestGenerator.consistenthashLogger.info((System.nanoTime() - startTime)+"");
+		
+		//startTime = System.nanoTime();
+		//handler.getTweetsFromUser(userId+"",RequestHandler.STATIC );
+		//RequestGenerator.statichashLogger.info((System.nanoTime() - startTime)+"");
 	}
 	
 }

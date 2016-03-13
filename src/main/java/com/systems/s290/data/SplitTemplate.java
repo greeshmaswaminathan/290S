@@ -45,7 +45,7 @@ public class SplitTemplate {
 			int startLimit = 0;
 			while (startLimit < sourceTweetCount) {
 				List<ArrayList<TwitterStatus>> hashedList = setupHashedList(systemDetails.getServerCount());
-				splitInChunks(strategy, hashedList, sourceConn, startLimit);
+				splitInChunks(strategy, hashedList, sourceConn, startLimit, systemDetails);
 
 				// uncomment to debug:
 				// printList(hashedList);
@@ -60,7 +60,7 @@ public class SplitTemplate {
 	}
 
 	private void splitInChunks(HashingStrategy strategy, List<ArrayList<TwitterStatus>> hashedList, Connection sourceConn,
-			int startLimit) throws SQLException {
+			int startLimit, SystemDetails systemDetails) throws SQLException {
 
 		try (PreparedStatement stmt = sourceConn.prepareStatement(SOURCE_SELECT_QUERY)) {
 			stmt.setInt(1, startLimit);
@@ -70,7 +70,7 @@ public class SplitTemplate {
 
 			while (rs.next()) {
 				status = setTwitterStatusDetails(rs);
-				int serverIndex = strategy.getServerIndex(status);
+				int serverIndex = strategy.getServerIndex(status, systemDetails.getTargetConnectionStrings());
 				hashedList.get(serverIndex).add(status);
 			}
 

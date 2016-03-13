@@ -42,7 +42,7 @@ public class RequestHandler
 	public RequestHandler()
 	{
 		List<String> targetConnectionStrings = Collections.synchronizedList(new ArrayList<String>());
-		try(BufferedReader reader = new BufferedReader(new FileReader(new File("resources" + File.pathSeparator + "serverconfig.txt"))))
+		try(BufferedReader reader = new BufferedReader(new FileReader(new File("resources/serverconfig.txt"))))
 		{
 			if (reader != null)
 			{	
@@ -59,32 +59,51 @@ public class RequestHandler
 		}
 		
 		sysDetails = new SystemDetails();
+		sysDetails.setSourceConnectionString("instance290-0.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306");
 		sysDetails.setTargetConnectionStrings(targetConnectionStrings);
-		consistentStrategy = new ConsistentHashStrategy(sysDetails);
-		staticStrategy = new StaticHashStrategy(sysDetails);
+		consistentStrategy = new ConsistentHashStrategy(targetConnectionStrings.size(), targetConnectionStrings);
+		staticStrategy = new StaticHashStrategy();
 	}
 	
 	public void getTweetsFromUser(String userId, String hashType)
 	{
 		long user = Long.parseLong(userId);
-		
-		// todo : from interface
 		if (hashType.equals(CONSISTENT))
 		{
-			int bucket = consistentStrategy.getHash(user);
+			guardedConsistentHashQuery();
+			int bucket = consistentStrategy.getHash(user, sysDetails.getTargetConnectionStrings());
 			requestUserInformation(sysDetails.getTargetConnectionStrings().get(bucket), consistentStrategy.getTargetTableName(), user);
 		}
 		else
 		{
-			while(staticRehashing.get());
+			guardedStaticHashQuery();
 			int bucket = staticStrategy.getHash(user, sysDetails.getServerCount());
 			requestUserInformation(sysDetails.getTargetConnectionStrings().get(bucket), staticStrategy.getTargetTableName(), user);
 		}
 	}
 	
+	private synchronized void guardedConsistentHashQuery(){
+		
+		while(consistentReHashing.get()){
+			try {
+	            wait();
+	        } catch (InterruptedException e) {}
+		}
+	}
+	
+	private synchronized void guardedStaticHashQuery(){
+		
+		while(staticRehashing.get()){
+			try {
+	            wait();
+	        } catch (InterruptedException e) {}
+		}
+	}
+
+	
 	private void requestUserInformation(String serverConnString, String tableName, long userId) 
 	{
-		String reqUSerString = "select * from " + tableName + " where UserId = " + userId;
+		String reqUSerString = "select * from main." + tableName + " where UserId = " + userId;
 		try(Connection conn = MySQLDataSource.getConnection(serverConnString))
 		{
 			Statement stmt = conn.createStatement();
@@ -100,60 +119,80 @@ public class RequestHandler
 	
 	public void addServer() throws SQLException
 	{
-		sysDetails.getConnectionStrings().add("instance290-6.cqxovt941ynz.us-west-2.rds.amazonaws.com");
-		SplitTemplate split = new SplitTemplate();
+		LOG.debug("Adding a server to the system");
 		
-		staticRehashing.set(true);
-		split.recreate(staticStrategy, sysDetails);
-		staticRehashing.set(false);
 		
 		consistentReHashing.set(true);
 		addServerForConsistentHash();
-		consistentReHashing.set(false);
+		notifyConsistentHashQuery();
+		
+		sysDetails.getConnectionStrings().add("instance290-6.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306");
+		
+		//SplitTemplate split = new SplitTemplate();
+		//staticRehashing.set(true);
+		//split.recreate(staticStrategy, sysDetails);
+		//notifyStaticHashQuery();
 		
 	}
 	
 	public void removeServer() throws SQLException
 	{
-		String serverToRemove = "instance290-6.cqxovt941ynz.us-west-2.rds.amazonaws.com"; 
-		sysDetails.getConnectionStrings().remove(serverToRemove);
-		SplitTemplate split = new SplitTemplate();
-		
-		staticRehashing.set(true);
-		split.recreate(staticStrategy, sysDetails);
-		staticRehashing.set(false);
+		String serverToRemove = "instance290-6.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306"; 
+		LOG.debug("Removing a server from the system : " + serverToRemove);
 		
 		consistentReHashing.set(true);
 		removeServerForConsistentHash(serverToRemove);
-		consistentReHashing.set(false);
+		notifyConsistentHashQuery();
+		
+		sysDetails.getConnectionStrings().remove(serverToRemove);
+		
+		//SplitTemplate split = new SplitTemplate();
+		//staticRehashing.set(true);
+		//split.recreate(staticStrategy, sysDetails);
+		//notifyStaticHashQuery();
+		
 		
 	}
 
+	public synchronized void notifyConsistentHashQuery() {
+		consistentReHashing.set(false);
+	    notifyAll();
+	}
+	
+	public synchronized void notifyStaticHashQuery(){
+		staticRehashing.set(false);
+	    notifyAll();
+	}
+	
 	private void removeServerForConsistentHash(String serverToRemove) 
 	{
+		LOG.debug("Removing a server from the system for consistent hash");
 		ConsistentHash<String> consisHash = consistentStrategy.getConsistentHash();
 		consisHash.removeBin(serverToRemove);
 		
 		ArrayList<TwitterStatus> tweets = readTweetsFromServer(serverToRemove);
 		HashMap<String, List<TwitterStatus>> tweetsToInsert = new HashMap<>();
+		List<Long> tweetsToDelete = new ArrayList<>();
 		for (TwitterStatus tw : tweets)
 		{
-			String currentBin = consisHash.getBinFor(tw.getUserId());
-			List<TwitterStatus> tweetsForServer = tweetsToInsert.get(currentBin);
+			tweetsToDelete.add(tw.getTwitterStatusId());
+			String newBin = consisHash.getBinFor(tw.getUserId());
+			List<TwitterStatus> tweetsForServer = tweetsToInsert.get(newBin);
 			if (tweetsForServer == null)
 			{
 				tweetsForServer = new ArrayList<>();
-				tweetsToInsert.put(currentBin, tweetsForServer);
+				tweetsToInsert.put(newBin, tweetsForServer);
 			}
-			
 			tweetsForServer.add(tw);
-			
-			
+			LOG.debug("Adding tweet id " + tw.getTwitterStatusId() + " for user " + tw.getUserId() + " to server: " + newBin);
 		}
 		for (String serverConn : tweetsToInsert.keySet())
 		{
 			insertTweets(tweetsToInsert.get(serverConn), serverConn);
 		}
+		
+		
+		//deleteTweets(tweetsToDelete, serverToRemove); - do it manually
 	}
 
 	private void addServerForConsistentHash() 
@@ -197,6 +236,8 @@ public class RequestHandler
 				{
 					tweetsToDelete.add(tw.getTwitterStatusId());
 					tweetsToAdd.add(tw);
+					LOG.debug("Adding tweet id " + tw.getTwitterStatusId() + " for user " + tw.getUserId() + " to server: " + newServer);
+					LOG.debug("Deleting tweet id " + tw.getTwitterStatusId() + " for user " + tw.getUserId() + " from server: " + connString);
 				}
 			}
 			
@@ -210,6 +251,7 @@ public class RequestHandler
 	{
 		try(Connection conn = MySQLDataSource.getConnection(newServer))
 		{
+			LOG.debug("Adding tweets to server " + newServer + " , tweets count :"+tweetsToAdd.size());
 			SplitTemplate.batchWrite(conn, tweetsToAdd, "TweetsC");
 		}
 		catch(SQLException e)
@@ -219,8 +261,9 @@ public class RequestHandler
 		}
 	}
 
-	private void deleteTweets(ArrayList<Long> tweetsToDelete, String connString) 
+	private void deleteTweets(List<Long> tweetsToDelete, String connString) 
 	{
+		LOG.debug("Deleting tweets from server " + connString + " , tweets count :"+tweetsToDelete.size());
 		String sqlDelete = "delete from main.TweetsC where TwitterStatusId = ?";
 		try(Connection conn = MySQLDataSource.getConnection(connString);
 				PreparedStatement stmt = conn.prepareStatement(sqlDelete))
@@ -236,7 +279,7 @@ public class RequestHandler
 		catch(SQLException e)
 		{
 			// log, and continue
-			LOG.warn("error retrieving user info from server " + connString, e);
+			LOG.warn("error deleting tweets from server " + connString, e);
 		}
 		
 	}
@@ -250,7 +293,10 @@ public class RequestHandler
 			Statement stmt = conn.createStatement();
 			try(ResultSet rs = stmt.executeQuery(sql))
 			{
-				tweets.add(SplitTemplate.setTwitterStatusDetails(rs));
+				while(rs.next()){
+					tweets.add(SplitTemplate.setTwitterStatusDetails(rs));
+				}
+				
 			}
 		}
 		catch(SQLException e)
@@ -272,6 +318,7 @@ public class RequestHandler
 				maxValue = i;
 			}
 		}
+		LOG.debug("Max value for hashcode " + hashCode + " is " + maxValue);
 		return maxValue;
 	}
 }

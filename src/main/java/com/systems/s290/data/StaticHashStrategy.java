@@ -1,5 +1,7 @@
 package com.systems.s290.data;
 
+import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,16 +14,16 @@ public class StaticHashStrategy implements HashingStrategy {
 	static final Logger LOG = LoggerFactory.getLogger(HashingStrategy.class);
 
 	private HashFunction hashFunction;
-	private SystemDetails systemDetails;
 	
-	public StaticHashStrategy(SystemDetails systemDetails) {
+	
+	public StaticHashStrategy() {
 		this.hashFunction = new MD5HashFunction();
-		this.systemDetails = systemDetails;
+		
 	}
 
 	@Override
-	public int getServerIndex(TwitterStatus status) {
-		return getHash(status.getUserId(), systemDetails.getServerCount());
+	public int getServerIndex(TwitterStatus status, List<String> serverConnectionStrings) {
+		return getHash(status.getUserId(), serverConnectionStrings.size());
 	}
 
 	@Override
