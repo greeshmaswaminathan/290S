@@ -29,6 +29,8 @@ import com.systems.s290.db.connection.MySQLDataSource;
 
 public class RequestHandler 
 {
+	private static final String SERVER6 = "instance290-6.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306";
+	private static final String SOURCE_SERVER = "instance290-0.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306";
 	static final Logger LOG = LoggerFactory.getLogger(RequestHandler.class);
 	private SystemDetails sysDetails = null;
 	private AtomicBoolean staticRehashing = new AtomicBoolean(false);
@@ -59,7 +61,7 @@ public class RequestHandler
 		}
 		
 		sysDetails = new SystemDetails();
-		sysDetails.setSourceConnectionString("instance290-0.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306");
+		sysDetails.setSourceConnectionString(SOURCE_SERVER);
 		sysDetails.setTargetConnectionStrings(targetConnectionStrings);
 		consistentStrategy = new ConsistentHashStrategy(targetConnectionStrings.size(), targetConnectionStrings);
 		staticStrategy = new StaticHashStrategy();
@@ -126,7 +128,7 @@ public class RequestHandler
 		addServerForConsistentHash();
 		notifyConsistentHashQuery();
 		
-		sysDetails.getConnectionStrings().add("instance290-6.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306");
+		sysDetails.getConnectionStrings().add(SERVER6);
 		
 		//SplitTemplate split = new SplitTemplate();
 		//staticRehashing.set(true);
@@ -137,7 +139,7 @@ public class RequestHandler
 	
 	public void removeServer() throws SQLException
 	{
-		String serverToRemove = "instance290-6.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306"; 
+		String serverToRemove = SERVER6; 
 		LOG.debug("Removing a server from the system : " + serverToRemove);
 		
 		consistentReHashing.set(true);
@@ -210,7 +212,7 @@ public class RequestHandler
 			}
 		}
 		
-		String newServer = "instance290-6.cqxovt941ynz.us-west-2.rds.amazonaws.com";
+		String newServer = SERVER6;
 		consisHash.addBin(newServer);
 		
 		for (int i = 0; i< 5; i++)
