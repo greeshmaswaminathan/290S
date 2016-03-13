@@ -46,6 +46,12 @@ public class ConsistentHashStrategy implements HashingStrategy, IConsistentHashS
 		return "TweetsC";
 	}
 
+		@Override
+	public String getDistributedDirTableName() {
+		return "";
+	}
+	
+
 	@Override
 	public String getBinFor(long userId) {
 		return consistentHash.getBinFor(userId);

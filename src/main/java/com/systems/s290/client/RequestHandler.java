@@ -20,7 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.systems.s290.data.ConsistentHashStrategy;
-import com.systems.s290.data.DistributedHashingStrategy;
+import com.systems.s290.data.DistributedDirectoryStrategy;
 import com.systems.s290.data.SplitTemplate;
 import com.systems.s290.data.StaticHashStrategy;
 import com.systems.s290.data.SystemDetails;
@@ -37,7 +37,7 @@ public class RequestHandler
 	private AtomicBoolean consistentReHashing = new AtomicBoolean(false);
 	private ConsistentHashStrategy consistentStrategy = null; 
 	private StaticHashStrategy staticStrategy = null; 
-	private DistributedHashingStrategy distStrategy = null; 
+	private DistributedDirectoryStrategy distStrategy = null; 
 	
 	public static String CONSISTENT = "consistent";
 	public static String STATIC = "static";
@@ -46,13 +46,13 @@ public class RequestHandler
 	public RequestHandler()
 	{
 		List<String> targetConnectionStrings = readConfigFile("resources/serverconfig.txt");
-		List<String> distconnectionStrings = readConfigFile("resources/dhtconfig");
+		//List<String> distconnectionStrings = readConfigFile("resources/dhtconfig");
 		sysDetails = new SystemDetails();
 		sysDetails.setSourceConnectionString(SOURCE_SERVER);
 		sysDetails.setTargetConnectionStrings(targetConnectionStrings);
 		consistentStrategy = new ConsistentHashStrategy(targetConnectionStrings.size(), targetConnectionStrings);
 		staticStrategy = new StaticHashStrategy();
-		distStrategy = new DistributedHashingStrategy(distconnectionStrings);
+		distStrategy = new DistributedDirectoryStrategy(sysDetails);
 	}
 
 	private List<String> readConfigFile(String configFileName) {
@@ -144,7 +144,7 @@ public class RequestHandler
 		addServerForConsistentHash();
 		notifyConsistentHashQuery();
 		
-		sysDetails.getConnectionStrings().add(SERVER6);
+		sysDetails.getTargetConnectionStrings().add(SERVER6);
 		
 		//SplitTemplate split = new SplitTemplate();
 		//staticRehashing.set(true);
@@ -162,7 +162,7 @@ public class RequestHandler
 		removeServerForConsistentHash(serverToRemove);
 		notifyConsistentHashQuery();
 		
-		sysDetails.getConnectionStrings().remove(serverToRemove);
+		sysDetails.getTargetConnectionStrings().remove(serverToRemove);
 		
 		//SplitTemplate split = new SplitTemplate();
 		//staticRehashing.set(true);
@@ -215,7 +215,7 @@ public class RequestHandler
 	private void addServerForConsistentHash() 
 	{
 		HashMap<Integer, String> connStringConsisMap = new HashMap<>();
-		List<String> connStrings = sysDetails.getConnectionStrings();
+		List<String> connStrings = sysDetails.getTargetConnectionStrings();
 		for (String conn : connStrings)
 		{
 			for (int i = 0; i< 5; i++)

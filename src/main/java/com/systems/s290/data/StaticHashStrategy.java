@@ -43,5 +43,10 @@ public class StaticHashStrategy implements HashingStrategy {
 	public int getServerIndex(Long primaryKeyValue, List<String> targetConnectionDetails) {
 		return getHash(primaryKeyValue.longValue(), targetConnectionDetails.size());
 	}
+	
+	@Override
+	public String getDistributedDirTableName() {
+		return "";
+	}
 
 }
