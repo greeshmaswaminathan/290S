@@ -31,12 +31,17 @@ public class StaticHashStrategy implements HashingStrategy {
 		return "TweetsS";
 	}
 
-	public int getHash(long userId, int count) {
+	private int getHash(long userId, int count) {
 		int hash = hashFunction.hash(userId) % count;
 		if(hash < 0){
 			hash+=count;
 		}
 		return hash;
+	}
+
+	@Override
+	public int getServerIndex(Long primaryKeyValue, List<String> targetConnectionDetails) {
+		return getHash(primaryKeyValue.longValue(), targetConnectionDetails.size());
 	}
 
 }

@@ -56,7 +56,7 @@ public class RequestGenerator {
 		while(System.nanoTime() < endTime){
 			//Run for some time
 			Long randomUserId  = null;
-			if(counter % 100 == 0){
+			if(counter % 1000 == 0){
 				randomUserId = getRandomUserId();
 			}else{
 				randomUserId = hotUsers.get(randomizer.nextInt(hotUsers.size()));
@@ -64,7 +64,7 @@ public class RequestGenerator {
 			
 			//LOG.info("Requesting for user:"+randomUserId);
 			newCachedThreadPool.submit(new RequestUser(randomUserId,handler));
-			Thread.sleep(250);
+			Thread.sleep(50);
 			counter++;
 		}
 	}

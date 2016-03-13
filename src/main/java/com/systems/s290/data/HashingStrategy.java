@@ -6,4 +6,5 @@ public interface HashingStrategy {
 	
 	public int getServerIndex(TwitterStatus status, List<String> serverConnectionStrings);
 	public String getTargetTableName();
+	public int getServerIndex(Long primaryKeyValue, List<String> targetConnectionDetails) ;
 }

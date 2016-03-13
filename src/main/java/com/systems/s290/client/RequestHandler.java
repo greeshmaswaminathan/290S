@@ -19,8 +19,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.cloudera.util.consistenthash.ConsistentHash;
 import com.systems.s290.data.ConsistentHashStrategy;
+import com.systems.s290.data.DistributedHashingStrategy;
 import com.systems.s290.data.SplitTemplate;
 import com.systems.s290.data.StaticHashStrategy;
 import com.systems.s290.data.SystemDetails;
@@ -37,14 +37,27 @@ public class RequestHandler
 	private AtomicBoolean consistentReHashing = new AtomicBoolean(false);
 	private ConsistentHashStrategy consistentStrategy = null; 
 	private StaticHashStrategy staticStrategy = null; 
+	private DistributedHashingStrategy distStrategy = null; 
 	
 	public static String CONSISTENT = "consistent";
 	public static String STATIC = "static";
+	public static String DISTRIBUTED = "distributed";
 	
 	public RequestHandler()
 	{
+		List<String> targetConnectionStrings = readConfigFile("resources/serverconfig.txt");
+		List<String> distconnectionStrings = readConfigFile("resources/dhtconfig");
+		sysDetails = new SystemDetails();
+		sysDetails.setSourceConnectionString(SOURCE_SERVER);
+		sysDetails.setTargetConnectionStrings(targetConnectionStrings);
+		consistentStrategy = new ConsistentHashStrategy(targetConnectionStrings.size(), targetConnectionStrings);
+		staticStrategy = new StaticHashStrategy();
+		distStrategy = new DistributedHashingStrategy(distconnectionStrings);
+	}
+
+	private List<String> readConfigFile(String configFileName) {
 		List<String> targetConnectionStrings = Collections.synchronizedList(new ArrayList<String>());
-		try(BufferedReader reader = new BufferedReader(new FileReader(new File("resources/serverconfig.txt"))))
+		try(BufferedReader reader = new BufferedReader(new FileReader(new File(configFileName))))
 		{
 			if (reader != null)
 			{	
@@ -59,12 +72,7 @@ public class RequestHandler
 		{
 			LOG.error("Unable to read serverconfig file, cannot load server details", e );
 		}
-		
-		sysDetails = new SystemDetails();
-		sysDetails.setSourceConnectionString(SOURCE_SERVER);
-		sysDetails.setTargetConnectionStrings(targetConnectionStrings);
-		consistentStrategy = new ConsistentHashStrategy(targetConnectionStrings.size(), targetConnectionStrings);
-		staticStrategy = new StaticHashStrategy();
+		return targetConnectionStrings;
 	}
 	
 	public void getTweetsFromUser(String userId, String hashType)
@@ -73,17 +81,25 @@ public class RequestHandler
 		if (hashType.equals(CONSISTENT))
 		{
 			guardedConsistentHashQuery();
-			int bucket = consistentStrategy.getHash(user, sysDetails.getTargetConnectionStrings());
+			int bucket = consistentStrategy.getServerIndex(user, sysDetails.getTargetConnectionStrings());
 			requestUserInformation(sysDetails.getTargetConnectionStrings().get(bucket), consistentStrategy.getTargetTableName(), user);
 		}
-		else
+		else if(hashType.equals(STATIC))
 		{
 			guardedStaticHashQuery();
-			int bucket = staticStrategy.getHash(user, sysDetails.getServerCount());
+			int bucket = staticStrategy.getServerIndex(user, sysDetails.getTargetConnectionStrings());
+			requestUserInformation(sysDetails.getTargetConnectionStrings().get(bucket), staticStrategy.getTargetTableName(), user);
+		}
+		else if(hashType.equals(DISTRIBUTED))
+		{
+			int bucket = distStrategy.getServerIndex(user, sysDetails.getTargetConnectionStrings());
 			requestUserInformation(sysDetails.getTargetConnectionStrings().get(bucket), staticStrategy.getTargetTableName(), user);
 		}
 	}
 	
+	
+	
+
 	private synchronized void guardedConsistentHashQuery(){
 		
 		while(consistentReHashing.get()){
@@ -169,8 +185,7 @@ public class RequestHandler
 	private void removeServerForConsistentHash(String serverToRemove) 
 	{
 		LOG.debug("Removing a server from the system for consistent hash");
-		ConsistentHash<String> consisHash = consistentStrategy.getConsistentHash();
-		consisHash.removeBin(serverToRemove);
+		consistentStrategy.removeBin(serverToRemove);
 		
 		ArrayList<TwitterStatus> tweets = readTweetsFromServer(serverToRemove);
 		HashMap<String, List<TwitterStatus>> tweetsToInsert = new HashMap<>();
@@ -178,7 +193,7 @@ public class RequestHandler
 		for (TwitterStatus tw : tweets)
 		{
 			tweetsToDelete.add(tw.getTwitterStatusId());
-			String newBin = consisHash.getBinFor(tw.getUserId());
+			String newBin = consistentStrategy.getBinFor(tw.getUserId());
 			List<TwitterStatus> tweetsForServer = tweetsToInsert.get(newBin);
 			if (tweetsForServer == null)
 			{
@@ -199,7 +214,6 @@ public class RequestHandler
 
 	private void addServerForConsistentHash() 
 	{
-		ConsistentHash<String> consisHash = consistentStrategy.getConsistentHash();
 		HashMap<Integer, String> connStringConsisMap = new HashMap<>();
 		List<String> connStrings = sysDetails.getConnectionStrings();
 		for (String conn : connStrings)
@@ -207,18 +221,18 @@ public class RequestHandler
 			for (int i = 0; i< 5; i++)
 			{
 				// for each virtual node of this new node
-				int hash = consisHash.getHash(conn + i);
+				int hash = consistentStrategy.getHashForServer(conn + i);
 				connStringConsisMap.put(hash, conn+i);
 			}
 		}
 		
 		String newServer = SERVER6;
-		consisHash.addBin(newServer);
+		consistentStrategy.addBin(newServer);
 		
 		for (int i = 0; i< 5; i++)
 		{
 			// for each virtual node of this new node
-			int hashCode = consisHash.getHash(newServer + i);
+			int hashCode = consistentStrategy.getHashForServer(newServer + i);
 			int smallestKey = findLargestKeyLessThanCurrent(connStringConsisMap.keySet(), hashCode);
 			String vServer = connStringConsisMap.get(smallestKey);
 			
@@ -233,7 +247,7 @@ public class RequestHandler
 			ArrayList<TwitterStatus> tweets = readTweetsFromServer(connString);
 			for (TwitterStatus tw : tweets)
 			{
-				String currentBin = consisHash.getBinFor(tw.getUserId());
+				String currentBin = consistentStrategy.getBinFor(tw.getUserId());
 				if (currentBin.equalsIgnoreCase(newServer))
 				{
 					tweetsToDelete.add(tw.getTwitterStatusId());
