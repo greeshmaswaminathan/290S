@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 public class RequestGenerator {
 	
 	private List<Long> userIds = new ArrayList<>();
+	private List<Long> hotUsers = new ArrayList<>();
 	private Random randomizer = new Random();
 	ExecutorService newCachedThreadPool = Executors.newCachedThreadPool();
 	static final Logger LOG = LoggerFactory.getLogger(RequestGenerator.class);
@@ -28,6 +29,10 @@ public class RequestGenerator {
 	static final long initialTime = System.currentTimeMillis();
 	
 	public RequestGenerator(){
+		hotUsers.add(60326110L);
+		hotUsers.add(77823579L);
+		hotUsers.add(88695404L);
+		
 		Runtime.getRuntime().addShutdownHook(new Thread(new Runnable(){
 
 			@Override
@@ -39,20 +44,29 @@ public class RequestGenerator {
 		}));
 	}
 	
-	private void readUserIds() throws IOException{
-		
-		try(BufferedReader userIdReader = new BufferedReader(new FileReader(new File("resources/userIds")))){
-			String userId = null;
-			while((userId = userIdReader.readLine()) != null){
-				userIds.add(Long.parseLong(userId));
-			}
+	public void fireHotSpotRequests() throws IOException, InterruptedException{
+		LOG.info("Starting hotspot request firing");
+		if(userIds.isEmpty()){
+			readUserIds();
 		}
-		
-		
-	}
-	
-	private Long getRandomUserId(){
-		return userIds.get(randomizer.nextInt(userIds.size()));
+		final RequestHandler handler = new RequestHandler();
+		long startTime = System.nanoTime();
+		long endTime = startTime + TimeUnit.NANOSECONDS.convert(1L, TimeUnit.HOURS);
+		int counter = 0;
+		while(System.nanoTime() < endTime){
+			//Run for some time
+			Long randomUserId  = null;
+			if(counter % 100 == 0){
+				randomUserId = getRandomUserId();
+			}else{
+				randomUserId = hotUsers.get(randomizer.nextInt(hotUsers.size()));
+			}
+			
+			//LOG.info("Requesting for user:"+randomUserId);
+			newCachedThreadPool.submit(new RequestUser(randomUserId,handler));
+			Thread.sleep(250);
+			counter++;
+		}
 	}
 
 	
@@ -128,8 +142,27 @@ public class RequestGenerator {
 		
 	}
 	
+	
+	private void readUserIds() throws IOException{
+		
+		try(BufferedReader userIdReader = new BufferedReader(new FileReader(new File("resources/userIds")))){
+			String userId = null;
+			while((userId = userIdReader.readLine()) != null){
+				userIds.add(Long.parseLong(userId));
+			}
+		}
+		
+		
+	}
+	
+	private Long getRandomUserId(){
+		return userIds.get(randomizer.nextInt(userIds.size()));
+	}
+	
+	
 	public static void main(String[] args) throws IOException, SQLException, InterruptedException, ExecutionException {
-		new RequestGenerator().fireRandomRequest();
+		//new RequestGenerator().fireRandomRequest();
+		new RequestGenerator().fireHotSpotRequests();
 	}
 }
 

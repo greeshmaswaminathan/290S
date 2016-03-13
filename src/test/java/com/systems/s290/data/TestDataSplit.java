@@ -21,10 +21,10 @@ public class TestDataSplit  {
 		connectionStrings.add("instance290-5.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306");
 		details.setConnectionStrings(connectionStrings);
 		details.setSourceConnectionString("instance290-0.cqxovt941ynz.us-west-2.rds.amazonaws.com:3306");
-		//HashingStrategy split = new ConsistentHashStrategy(details);
-		//new SplitTemplate().recreate(split, details);
-		HashingStrategy split1 = new StaticHashStrategy();
-		new SplitTemplate().recreate(split1, details);
+		HashingStrategy split = new ConsistentHashStrategy(details.getServerCount(),details.getTargetConnectionStrings());
+		new SplitTemplate().recreate(split, details);
+		//HashingStrategy split1 = new StaticHashStrategy();
+		//new SplitTemplate().recreate(split1, details);
 	}
 	
 
