@@ -69,17 +69,21 @@ public class SplitTemplate {
 			stmt.setInt(2, CHUNK_SIZE);
 			ResultSet rs = stmt.executeQuery();
 			TwitterStatus status = null;
-
+			HashMap<String, Object> emptyExtraInfo = new HashMap<String, Object>();
+			
 			while (rs.next()) {
 				status = setTwitterStatusDetails(rs);
-				int serverIndex = strategy.getServerIndex(status,systemDetails.getTargetConnectionStrings());
 				
+				int serverIndex = -1;
 				// TODO this is a hack, need to set this up
 				if (strategy instanceof DistributedDirectoryStrategy && systemDetails.getDistributedDirCount() > 0)
 				{
+					HashMap<String, Object> extraInfo = new HashMap<String, Object>();
+					extraInfo.put("hop","first");
+					serverIndex = strategy.getServerIndex(status.getUserId(),systemDetails.getDistributedDirConnStrings(),extraInfo);
 					// Use the staticStrategy to pick a server where this tweet will be saved
 					StaticHashStrategy staticStr = new StaticHashStrategy();
-					int tweetServerIndex = staticStr.getServerIndex(status,systemDetails.getTargetConnectionStrings());
+					int tweetServerIndex = staticStr.getServerIndex(status.getUserId(),systemDetails.getTargetConnectionStrings(), emptyExtraInfo);
 					String connString = systemDetails.getTargetConnectionStrings().get(tweetServerIndex);
 					
 					// Place the mapping from UserId to server in hashedDirList
@@ -87,6 +91,8 @@ public class SplitTemplate {
 					hashedDirList.get(serverIndex).put(status.getUserId(), connString);
 					serverIndex = tweetServerIndex;
 					
+				}else{
+					serverIndex = strategy.getServerIndex(status.getUserId(),systemDetails.getTargetConnectionStrings(),emptyExtraInfo);
 				}
 				
 				hashedList.get(serverIndex).add(status);
@@ -264,6 +270,18 @@ public class SplitTemplate {
 			// Connect to db and delete all entries
 			try (Connection conn = MySQLDataSource.getConnection(connStr)) {
 				String sql = "delete from main." + tableName;
+				try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+					stmt.executeUpdate();
+				}
+			}
+		}
+		
+		List<String> distConnStrings = sysDetails.getDistributedDirConnStrings();
+		if(distConnStrings!=null)
+		for (String connStr : distConnStrings) {
+			// Connect to db and delete all entries
+			try (Connection conn = MySQLDataSource.getConnection(connStr)) {
+				String sql = "delete from main.DistributedUserHash";
 				try (PreparedStatement stmt = conn.prepareStatement(sql)) {
 					stmt.executeUpdate();
 				}

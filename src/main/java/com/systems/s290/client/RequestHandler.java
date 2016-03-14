@@ -78,21 +78,24 @@ public class RequestHandler
 	public void getTweetsFromUser(String userId, String hashType)
 	{
 		long user = Long.parseLong(userId);
+		HashMap<String, Object> emptyExtraInfo = new HashMap<String, Object>();
 		if (hashType.equals(CONSISTENT))
 		{
 			guardedConsistentHashQuery();
-			int bucket = consistentStrategy.getServerIndex(user, sysDetails.getTargetConnectionStrings());
+			int bucket = consistentStrategy.getServerIndex(user, sysDetails.getTargetConnectionStrings(), emptyExtraInfo);
 			requestUserInformation(sysDetails.getTargetConnectionStrings().get(bucket), consistentStrategy.getTargetTableName(), user);
 		}
 		else if(hashType.equals(STATIC))
 		{
 			guardedStaticHashQuery();
-			int bucket = staticStrategy.getServerIndex(user, sysDetails.getTargetConnectionStrings());
+			int bucket = staticStrategy.getServerIndex(user, sysDetails.getTargetConnectionStrings(),emptyExtraInfo);
 			requestUserInformation(sysDetails.getTargetConnectionStrings().get(bucket), staticStrategy.getTargetTableName(), user);
 		}
 		else if(hashType.equals(DISTRIBUTED))
 		{
-			int bucket = distStrategy.getServerIndex(user, sysDetails.getTargetConnectionStrings());
+			HashMap<String, Object> extraInfo = new HashMap<String, Object>();
+			extraInfo.put("hop","second");
+			int bucket = distStrategy.getServerIndex(user, sysDetails.getTargetConnectionStrings(),extraInfo);
 			requestUserInformation(sysDetails.getTargetConnectionStrings().get(bucket), staticStrategy.getTargetTableName(), user);
 		}
 	}

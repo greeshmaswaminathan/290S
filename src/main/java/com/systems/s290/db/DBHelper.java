@@ -12,7 +12,7 @@ import com.systems.s290.db.connection.MySQLDataSource;
 
 public class DBHelper {
 	
-	private static final String DHT_ServerSelect = "select Server from DistributedUserHash where UserId = ?";
+	private static final String DHT_ServerSelect = "select Server from main.DistributedUserHash where UserId = ?";
 	static final Logger LOG = LoggerFactory.getLogger(DBHelper.class);
 	
 	public static String getServerForUserId(String connectionString, long userId) throws SQLException{

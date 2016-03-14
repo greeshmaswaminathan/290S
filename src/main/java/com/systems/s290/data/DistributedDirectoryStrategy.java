@@ -2,6 +2,7 @@ package com.systems.s290.data;
 
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,13 +41,17 @@ public class DistributedDirectoryStrategy implements HashingStrategy {
 	}
 
 	@Override
-	public int getServerIndex(TwitterStatus status, List<String> serverConnectionStrings) {
-		Long userId = status.getUserId();
-		return getServerIndex(userId, serverConnectionStrings);
+	public int getServerIndex(Long primaryKeyValue, List<String> serverConnectionStrings, Map<String, Object> extraInfo) {
+		if(((String)extraInfo.get("hop")).equals("first")){
+			return getHash(primaryKeyValue);
+		}else{
+			return getFinalServerIndex(primaryKeyValue, serverConnectionStrings);
+		}
+		
 	}
 
-	@Override
-	public int getServerIndex(Long primaryKeyValue, List<String> targetConnectionDetails) {
+	
+	private int getFinalServerIndex(Long primaryKeyValue, List<String> targetConnectionDetails) {
 		String dhtServer = consistentHash.getBinFor(primaryKeyValue);
 		try {
 			String targetServer = DBHelper.getServerForUserId(dhtServer, primaryKeyValue.longValue());

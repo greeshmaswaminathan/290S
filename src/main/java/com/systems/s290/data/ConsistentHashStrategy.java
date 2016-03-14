@@ -1,6 +1,7 @@
 package com.systems.s290.data;
 
 import java.util.List;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,13 +19,8 @@ public class ConsistentHashStrategy implements HashingStrategy, IConsistentHashS
 		//this.systemDetails = systemDetails;
 	}
 	
-	@Override
-	public int getServerIndex(TwitterStatus status, List<String> serverConnectionStrings) {
-		Long primaryKeyValue = status.getUserId();
-		return getServerIndex(primaryKeyValue, serverConnectionStrings);
-	}
 
-	public int getServerIndex(Long primaryKeyValue, List<String> targetConnectionDetails) {
+	public int getServerIndex(Long primaryKeyValue, List<String> targetConnectionDetails, Map<String, Object> extraInfo) {
 		String bin = consistentHash.getBinFor(primaryKeyValue);
 		return targetConnectionDetails.indexOf(bin);
 	}

@@ -1,6 +1,7 @@
 package com.systems.s290.data;
 
 import java.util.List;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,10 +22,6 @@ public class StaticHashStrategy implements HashingStrategy {
 		
 	}
 
-	@Override
-	public int getServerIndex(TwitterStatus status, List<String> serverConnectionStrings) {
-		return getHash(status.getUserId(), serverConnectionStrings.size());
-	}
 
 	@Override
 	public String getTargetTableName() {
@@ -40,7 +37,7 @@ public class StaticHashStrategy implements HashingStrategy {
 	}
 
 	@Override
-	public int getServerIndex(Long primaryKeyValue, List<String> targetConnectionDetails) {
+	public int getServerIndex(Long primaryKeyValue, List<String> targetConnectionDetails,Map<String, Object> extraInfo) {
 		return getHash(primaryKeyValue.longValue(), targetConnectionDetails.size());
 	}
 	
