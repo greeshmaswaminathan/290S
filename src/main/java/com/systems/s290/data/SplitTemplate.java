@@ -280,11 +280,16 @@ public class SplitTemplate {
 		if(distConnStrings!=null)
 		for (String connStr : distConnStrings) {
 			// Connect to db and delete all entries
-			try (Connection conn = MySQLDataSource.getConnection(connStr)) {
-				String sql = "delete from main.DistributedUserHash";
-				try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-					stmt.executeUpdate();
-				}
+			emptyDistributedUserHash(connStr);
+		}
+		emptyDistributedUserHash(sysDetails.getSourceConnectionString());
+	}
+
+	private void emptyDistributedUserHash(String connStr) throws SQLException {
+		try (Connection conn = MySQLDataSource.getConnection(connStr)) {
+			String sql = "delete from main.DistributedUserHash";
+			try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+				stmt.executeUpdate();
 			}
 		}
 	}

@@ -30,7 +30,17 @@
 			</Pattern>
 		</encoder>
 	</appender>
-
+	<appender name="distributedA" class="ch.qos.logback.core.FileAppender">
+		<file>logs/distributed.log</file>
+		<append>true</append>
+		<encoder>
+			<Pattern>%msg%n
+			</Pattern>
+		</encoder>
+	</appender>
+	<logger name="distributed" level="DEBUG" additivity="false">
+		<appender-ref ref="distributedA" />
+	</logger>
 	<logger name="consistent" level="DEBUG" additivity="false">
 		<appender-ref ref="consistentA" />
 	</logger>

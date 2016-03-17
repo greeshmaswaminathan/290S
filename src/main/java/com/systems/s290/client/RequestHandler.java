@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -43,13 +44,17 @@ public class RequestHandler
 	public static String STATIC = "static";
 	public static String DISTRIBUTED = "distributed";
 	
+	List<Long> hotUsers = Collections.synchronizedList(new ArrayList<Long>());
+	List<Long> hotUsersBeingResolved = Collections.synchronizedList(new ArrayList<Long>());
+	
 	public RequestHandler()
 	{
 		List<String> targetConnectionStrings = readConfigFile("resources/serverconfig.txt");
-		//List<String> distconnectionStrings = readConfigFile("resources/dhtconfig");
+		List<String> distconnectionStrings = readConfigFile("resources/dhtconfig");
 		sysDetails = new SystemDetails();
 		sysDetails.setSourceConnectionString(SOURCE_SERVER);
 		sysDetails.setTargetConnectionStrings(targetConnectionStrings);
+		sysDetails.setDistributedDirConnStrings(distconnectionStrings);
 		consistentStrategy = new ConsistentHashStrategy(targetConnectionStrings.size(), targetConnectionStrings);
 		staticStrategy = new StaticHashStrategy();
 		distStrategy = new DistributedDirectoryStrategy(sysDetails);
@@ -75,7 +80,7 @@ public class RequestHandler
 		return targetConnectionStrings;
 	}
 	
-	public void getTweetsFromUser(String userId, String hashType)
+	public void getTweetsFromUser(String userId, String hashType) throws SQLException
 	{
 		long user = Long.parseLong(userId);
 		HashMap<String, Object> emptyExtraInfo = new HashMap<String, Object>();
@@ -96,12 +101,139 @@ public class RequestHandler
 			HashMap<String, Object> extraInfo = new HashMap<String, Object>();
 			extraInfo.put("hop","second");
 			int bucket = distStrategy.getServerIndex(user, sysDetails.getTargetConnectionStrings(),extraInfo);
-			requestUserInformation(sysDetails.getTargetConnectionStrings().get(bucket), staticStrategy.getTargetTableName(), user);
+			extraInfo.clear();
+			extraInfo.put("hop", "first");
+			int firstHop = distStrategy.getServerIndex(user, sysDetails.getTargetConnectionStrings(), extraInfo);
+			requestDistributedUserInformation(bucket, 
+					firstHop, 
+					distStrategy.getTargetTableName(), 
+					user);
 		}
 	}
 	
 	
+	private void requestDistributedUserInformation(int bucket,
+			int firstHop, String targetTableName, long user) throws SQLException 
+	{
+		String currentTweetsServer = sysDetails.getTargetConnectionStrings().get(bucket);
+		String disDirectoryServer = sysDetails.getDistributedDirConnStrings().get(firstHop);
+		// If distributed directory has a hotspot
+		if (!hotUsers.isEmpty() && hotUsers.contains(user))   
+		{
+			
+			if(!hotUsersBeingResolved.contains(user)){
+				hotUsersBeingResolved.add(user);
+				LOG.info("Resolving hotspot for the user:"+user);
+				// move around the users...
+				// Get the user information for this user
+				List<Long> tweetsToDelete = new ArrayList<>();
+				List<TwitterStatus> tweetsToAdd = new ArrayList<>();
+				
+				String reqUSerString = "select * from main." + targetTableName + " where UserId = " + user;
+				try(Connection conn = MySQLDataSource.getConnection(currentTweetsServer))
+				{
+					Statement stmt = conn.createStatement();
+					try(ResultSet rs = stmt.executeQuery(reqUSerString))
+					{
+						while(rs.next()){
+							tweetsToAdd.add(SplitTemplate.setTwitterStatusDetails(rs));
+							tweetsToDelete.add(rs.getLong("TwitterStatusId"));
+						}
+					}
+				}
+				catch(SQLException e)
+				{
+					// log, and continue
+					LOG.warn("error retrieving user info from table " + targetTableName, e);
+					throw e;
+				}
+				
+				int newBucket = getLightlyLoadedServer(bucket);
+				String newTweetsServer = sysDetails.getTargetConnectionStrings().get(newBucket);
+				insertTweets(tweetsToAdd, newTweetsServer,targetTableName);
+				deleteTweets(tweetsToDelete, currentTweetsServer,targetTableName);	
+				LOG.info("Deleting tweets for user:"+user+" from server "+currentTweetsServer);
+				LOG.info("Inserting tweets for user:"+user+" to server "+newTweetsServer);
+				// Update the location of the user's tweets in the distibuted Directory and the source server
+				updateUserServerMapping(targetTableName, user, newTweetsServer, disDirectoryServer);
+				hotUsers.remove(user);
+				hotUsersBeingResolved.remove(user);
+				synchronized(this){
+					notifyAll();
+				}
+				LOG.info("Resolution for hotspot for the user:"+user+" completed");
+			}
+			else
+			while (hotUsersBeingResolved.contains(user))
+			{
+				LOG.info("Waiting on hotspot being resolved for the user:"+user);
+				waitWhileHotSpotResolves();
+			}
+			
+			LOG.info("Finally trying to get tweets again for :"+user);
+			getTweetsFromUser(user+"", DISTRIBUTED);
+			
+		}else{
+			requestUserInformation(currentTweetsServer, targetTableName, user);
+		}
+		
+	}
+
 	
+	private int getLightlyLoadedServer(int bucket) 
+	{
+		int count = sysDetails.getServerCount();
+		int randomAdder = new Random().nextInt(count - 1) + 1;
+		return (bucket + randomAdder) % count;
+	}
+	
+	
+	private synchronized void waitWhileHotSpotResolves() {
+		try {
+			wait();
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+
+	private void updateUserServerMapping(String targetTableName, long user,
+			String newTweetsServer, String disDirectoryServer) {
+		
+		try(Connection conn = MySQLDataSource.getConnection(disDirectoryServer))
+		{
+			updateDistributedHashTable(conn, user, newTweetsServer);
+			LOG.info("Updating DistributedUserHash in server "+disDirectoryServer+" with entry "+newTweetsServer);
+		}
+		catch(SQLException e)
+		{
+			// log, and continue
+			LOG.warn("error retrieving user info from table " + targetTableName, e);
+		}
+		
+		try(Connection conn = MySQLDataSource.getConnection(sysDetails.getSourceConnectionString()))
+		{
+			updateDistributedHashTable(conn, user, newTweetsServer);
+			LOG.info("Updating DistributedUserHash in server "+sysDetails.getSourceConnectionString()+" with entry "+newTweetsServer);
+		}
+		catch(SQLException e)
+		{
+			// log, and continue
+			LOG.warn("error retrieving user info from table " + targetTableName, e);
+		}
+	}
+
+	private void updateDistributedHashTable(Connection conn, long user, String newTweetsServer)
+			throws SQLException {
+		
+		String updateSql = "update main." + distStrategy.getDistributedDirTableName() + " set Server = ? where UserId = ?";
+		try(PreparedStatement stmt = conn.prepareStatement(updateSql))
+		{
+			stmt.setString(1, newTweetsServer);
+			stmt.setLong(2, user);
+			stmt.executeUpdate();
+		}
+	}
 
 	private synchronized void guardedConsistentHashQuery(){
 		
@@ -185,7 +317,7 @@ public class RequestHandler
 	    notifyAll();
 	}
 	
-	private void removeServerForConsistentHash(String serverToRemove) 
+	private void removeServerForConsistentHash(String serverToRemove) throws SQLException 
 	{
 		LOG.debug("Removing a server from the system for consistent hash");
 		consistentStrategy.removeBin(serverToRemove);
@@ -208,14 +340,14 @@ public class RequestHandler
 		}
 		for (String serverConn : tweetsToInsert.keySet())
 		{
-			insertTweets(tweetsToInsert.get(serverConn), serverConn);
+			insertTweets(tweetsToInsert.get(serverConn), serverConn,consistentStrategy.getTargetTableName());
 		}
 		
 		
 		//deleteTweets(tweetsToDelete, serverToRemove); - do it manually
 	}
 
-	private void addServerForConsistentHash() 
+	private void addServerForConsistentHash() throws SQLException 
 	{
 		HashMap<Integer, String> connStringConsisMap = new HashMap<>();
 		List<String> connStrings = sysDetails.getTargetConnectionStrings();
@@ -260,30 +392,31 @@ public class RequestHandler
 				}
 			}
 			
-			deleteTweets(tweetsToDelete, connString);
-			insertTweets(tweetsToAdd, newServer);
+			deleteTweets(tweetsToDelete, connString,consistentStrategy.getTargetTableName());
+			insertTweets(tweetsToAdd, newServer,consistentStrategy.getTargetTableName());
 		}
 		
 	}
 
-	private void insertTweets(List<TwitterStatus> tweetsToAdd, String newServer) 
+	private void insertTweets(List<TwitterStatus> tweetsToAdd, String newServer, String tableName) throws SQLException 
 	{
 		try(Connection conn = MySQLDataSource.getConnection(newServer))
 		{
 			LOG.debug("Adding tweets to server " + newServer + " , tweets count :"+tweetsToAdd.size());
-			SplitTemplate.batchWrite(conn, tweetsToAdd, "TweetsC");
+			SplitTemplate.batchWrite(conn, tweetsToAdd, tableName);
 		}
 		catch(SQLException e)
 		{
 			// log, and continue
 			LOG.warn("error retrieving user info from server " + newServer, e);
+			throw e;
 		}
 	}
 
-	private void deleteTweets(List<Long> tweetsToDelete, String connString) 
+	private void deleteTweets(List<Long> tweetsToDelete, String connString, String tableName) throws SQLException 
 	{
 		LOG.debug("Deleting tweets from server " + connString + " , tweets count :"+tweetsToDelete.size());
-		String sqlDelete = "delete from main.TweetsC where TwitterStatusId = ?";
+		String sqlDelete = "delete from main."+tableName+" where TwitterStatusId = ?";
 		try(Connection conn = MySQLDataSource.getConnection(connString);
 				PreparedStatement stmt = conn.prepareStatement(sqlDelete))
 		{
@@ -299,6 +432,7 @@ public class RequestHandler
 		{
 			// log, and continue
 			LOG.warn("error deleting tweets from server " + connString, e);
+			throw e;
 		}
 		
 	}
@@ -339,5 +473,20 @@ public class RequestHandler
 		}
 		LOG.debug("Max value for hashcode " + hashCode + " is " + maxValue);
 		return maxValue;
+	}
+	
+	public void notifyHotSpot(Long user)
+	{
+		hotUsers.add(user);
+	}
+	
+	public List<Long> getDistributedDirHotUser()
+	{
+		return hotUsers;
+	}
+	
+	public void removeDistributedDirHotUser(Long user)
+	{
+		hotUsers.remove(user);
 	}
 }

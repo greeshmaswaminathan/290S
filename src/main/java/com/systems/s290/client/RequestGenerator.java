@@ -21,17 +21,23 @@ public class RequestGenerator {
 	
 	private List<Long> userIds = new ArrayList<>();
 	private List<Long> hotUsers = new ArrayList<>();
+	private List<Long> distributedHotUsers = new ArrayList<>();
 	private Random randomizer = new Random();
 	ExecutorService newCachedThreadPool = Executors.newCachedThreadPool();
 	static final Logger LOG = LoggerFactory.getLogger(RequestGenerator.class);
 	static final Logger statichashLogger = LoggerFactory.getLogger("static"); 
 	static final Logger consistenthashLogger = LoggerFactory.getLogger("consistent"); 
+	static final Logger distributedhashLogger = LoggerFactory.getLogger("distributed"); 
 	static final long initialTime = System.currentTimeMillis();
 	
 	public RequestGenerator(){
 		hotUsers.add(60326110L);
 		hotUsers.add(77823579L);
 		hotUsers.add(88695404L);
+		
+		distributedHotUsers.add(14465607L);
+		distributedHotUsers.add(116916708L);
+		distributedHotUsers.add(175848457L);
 		
 		Runtime.getRuntime().addShutdownHook(new Thread(new Runnable(){
 
@@ -44,7 +50,7 @@ public class RequestGenerator {
 		}));
 	}
 	
-	public void fireHotSpotRequests() throws IOException, InterruptedException{
+	public void fireHotSpotRequests(List<Long> hotUsers) throws IOException, InterruptedException{
 		LOG.info("Starting hotspot request firing");
 		if(userIds.isEmpty()){
 			readUserIds();
@@ -52,11 +58,13 @@ public class RequestGenerator {
 		final RequestHandler handler = new RequestHandler();
 		long startTime = System.nanoTime();
 		long endTime = startTime + TimeUnit.NANOSECONDS.convert(1L, TimeUnit.HOURS);
+		long hotSpotNotifyTime = startTime + TimeUnit.NANOSECONDS.convert(15L, TimeUnit.MINUTES);
 		int counter = 0;
+		boolean hotSpotNotified = false;
 		while(System.nanoTime() < endTime){
 			//Run for some time
 			Long randomUserId  = null;
-			if(counter % 1000 == 0){
+			if(counter % 100 == 0){
 				randomUserId = getRandomUserId();
 			}else{
 				randomUserId = hotUsers.get(randomizer.nextInt(hotUsers.size()));
@@ -66,6 +74,15 @@ public class RequestGenerator {
 			newCachedThreadPool.submit(new RequestUser(randomUserId,handler));
 			Thread.sleep(50);
 			counter++;
+			
+			if(System.nanoTime() > hotSpotNotifyTime && !hotSpotNotified){
+				for(int index = 0; index < distributedHotUsers.size()-1 ; index++){
+					Long user = distributedHotUsers.get(index);
+					handler.notifyHotSpot(user);
+				}
+				hotSpotNotified = true;
+			}
+			
 		}
 	}
 
@@ -162,7 +179,9 @@ public class RequestGenerator {
 	
 	public static void main(String[] args) throws IOException, SQLException, InterruptedException, ExecutionException {
 		//new RequestGenerator().fireRandomRequest();
-		new RequestGenerator().fireHotSpotRequests();
+		RequestGenerator requestGenerator = new RequestGenerator();
+		//requestGenerator.fireHotSpotRequests(requestGenerator.hotUsers);
+		requestGenerator.fireHotSpotRequests(requestGenerator.distributedHotUsers);
 	}
 }
 
@@ -180,12 +199,21 @@ class RequestUser implements Runnable{
 	@Override
 	public void run() {
 		long startTime = System.nanoTime();
-		handler.getTweetsFromUser(userId+"",RequestHandler.CONSISTENT );
-		RequestGenerator.consistenthashLogger.info((System.nanoTime() - startTime)+"");
+		//handler.getTweetsFromUser(userId+"",RequestHandler.CONSISTENT );
+		//RequestGenerator.consistenthashLogger.info((System.nanoTime() - startTime)+"");
 		
 		//startTime = System.nanoTime();
 		//handler.getTweetsFromUser(userId+"",RequestHandler.STATIC );
 		//RequestGenerator.statichashLogger.info((System.nanoTime() - startTime)+"");
+		
+		try {
+			handler.getTweetsFromUser(userId+"",RequestHandler.DISTRIBUTED );
+		} catch (SQLException e) {
+			
+			e.printStackTrace();
+			RequestGenerator.LOG.error("Exception in user request",e);
+		}
+		RequestGenerator.distributedhashLogger.info((System.nanoTime() - startTime)+"");
 	}
 	
 }
