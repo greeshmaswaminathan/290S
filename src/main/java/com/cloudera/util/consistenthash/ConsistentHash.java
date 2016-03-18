@@ -15,6 +15,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/**
+ * This file has been changed to add a new method that returns the hash. 
+ * This is required specifically for the purpose of our implementation only.
+ * Modified by Greeshma Swaminathan
+ */
 package com.cloudera.util.consistenthash;
 
 import java.util.ArrayList;

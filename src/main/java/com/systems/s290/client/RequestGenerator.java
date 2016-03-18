@@ -93,8 +93,8 @@ public class RequestGenerator {
 		final RequestHandler handler = new RequestHandler();
 		long startTime = System.nanoTime();
 		long endTime = startTime + TimeUnit.NANOSECONDS.convert(15L, TimeUnit.MINUTES);
-		long addTime = startTime + TimeUnit.NANOSECONDS.convert(1L, TimeUnit.MINUTES);
-		long removeTime = startTime + TimeUnit.NANOSECONDS.convert(11L, TimeUnit.MINUTES);
+		long addTime = startTime + TimeUnit.NANOSECONDS.convert(2L, TimeUnit.HOURS);
+		long removeTime = startTime + TimeUnit.NANOSECONDS.convert(2L, TimeUnit.HOURS);
 		boolean serverAdded = false;
 		boolean serverRemoved = false;
 		Future<?> future = null;
@@ -106,47 +106,12 @@ public class RequestGenerator {
 			
 			//Initiate an addition
 			if(System.nanoTime() > addTime && !serverAdded){
-				ExecutorService newSingleThreadExecutor = Executors.newSingleThreadExecutor();
-				future = newSingleThreadExecutor.submit(new Runnable(){
-
-					@Override
-					public void run() {
-						LOG.info("Adding server");
-						consistenthashLogger.info("Adding server");
-						statichashLogger.info("Adding server");
-						try {
-							handler.addServer();
-						} catch (SQLException e) {
-							LOG.info("Exception in adding server",e);
-						}
-						
-						LOG.info("Adding server completed");
-						consistenthashLogger.info("Adding server completed");
-						statichashLogger.info("Adding server completed");
-						
-					}});
-				
-				serverAdded = true;
-				
+				future = addServer(handler);
+				serverAdded = true;	
 			}
 			//Initiate a removal
 			else if((System.nanoTime()) > removeTime && !serverRemoved && future.get() == null){
-				new Thread(new Runnable(){
-
-					@Override
-					public void run() {
-						LOG.info("Removing server");
-						consistenthashLogger.info("Removing server");
-						statichashLogger.info("Removing server");
-						try {
-							handler.removeServer();
-						} catch (SQLException e) {
-							LOG.info("Exception in removing server",e);
-						}
-						LOG.info("Removing server completed");
-						consistenthashLogger.info("Removing server completed");
-						statichashLogger.info("Removing server completed");
-					}}).start();
+				removeServer(handler);
 				serverRemoved = true;
 				
 			}
@@ -157,6 +122,49 @@ public class RequestGenerator {
 		
 		
 		
+	}
+
+	private void removeServer(final RequestHandler handler) {
+		new Thread(new Runnable(){
+
+			@Override
+			public void run() {
+				LOG.info("Removing server");
+				consistenthashLogger.info("Removing server");
+				statichashLogger.info("Removing server");
+				try {
+					handler.removeServer();
+				} catch (SQLException e) {
+					LOG.info("Exception in removing server",e);
+				}
+				LOG.info("Removing server completed");
+				consistenthashLogger.info("Removing server completed");
+				statichashLogger.info("Removing server completed");
+			}}).start();
+	}
+
+	private Future<?> addServer(final RequestHandler handler) {
+		Future<?> future;
+		ExecutorService newSingleThreadExecutor = Executors.newSingleThreadExecutor();
+		future = newSingleThreadExecutor.submit(new Runnable(){
+
+			@Override
+			public void run() {
+				LOG.info("Adding server");
+				consistenthashLogger.info("Adding server");
+				statichashLogger.info("Adding server");
+				try {
+					handler.addServer();
+				} catch (SQLException e) {
+					LOG.info("Exception in adding server",e);
+				}
+				
+				LOG.info("Adding server completed");
+				consistenthashLogger.info("Adding server completed");
+				statichashLogger.info("Adding server completed");
+				
+			}});
+		return future;
 	}
 	
 	
@@ -181,7 +189,8 @@ public class RequestGenerator {
 		//new RequestGenerator().fireRandomRequest();
 		RequestGenerator requestGenerator = new RequestGenerator();
 		//requestGenerator.fireHotSpotRequests(requestGenerator.hotUsers);
-		requestGenerator.fireHotSpotRequests(requestGenerator.distributedHotUsers);
+		//requestGenerator.fireHotSpotRequests(requestGenerator.distributedHotUsers);
+		requestGenerator.fireRandomRequest();
 	}
 }
 
@@ -198,22 +207,26 @@ class RequestUser implements Runnable{
 	
 	@Override
 	public void run() {
-		long startTime = System.nanoTime();
-		//handler.getTweetsFromUser(userId+"",RequestHandler.CONSISTENT );
-		//RequestGenerator.consistenthashLogger.info((System.nanoTime() - startTime)+"");
 		
-		//startTime = System.nanoTime();
-		//handler.getTweetsFromUser(userId+"",RequestHandler.STATIC );
-		//RequestGenerator.statichashLogger.info((System.nanoTime() - startTime)+"");
 		
-		try {
+		try {	
+			long startTime = System.nanoTime();
+			handler.getTweetsFromUser(userId+"",RequestHandler.CONSISTENT );
+			RequestGenerator.consistenthashLogger.info((System.nanoTime() - startTime)+"");
+			
+			startTime = System.nanoTime();
 			handler.getTweetsFromUser(userId+"",RequestHandler.DISTRIBUTED );
+			RequestGenerator.distributedhashLogger.info((System.nanoTime() - startTime)+"");
+			
+			startTime = System.nanoTime();
+			handler.getTweetsFromUser(userId+"",RequestHandler.STATIC );
+			RequestGenerator.statichashLogger.info((System.nanoTime() - startTime)+"");
 		} catch (SQLException e) {
 			
 			e.printStackTrace();
 			RequestGenerator.LOG.error("Exception in user request",e);
 		}
-		RequestGenerator.distributedhashLogger.info((System.nanoTime() - startTime)+"");
+		
 	}
 	
 }
